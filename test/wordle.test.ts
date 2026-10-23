@@ -16,6 +16,8 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const wordFrom = (letters: string) => 
   fc.array(fc.constantFrom(...letters), {minLength: 5, maxLength: 5}).map(cs => cs.join(''));
 const word = wordFrom(ALPHABET);
+// Few letters, so words often share and repeat letters (the tricky cases).
+const smallWord = wordFrom('ABC');
 
 // Pattern: invariant. The result always has exactly five colors.
 it('returns exactly five colors', () => {
@@ -49,7 +51,7 @@ it('guessing the secret gives all greens', () => {
 // Pattern: invariant. No letter is credited (G or Y) more times than the secret contains it.
 it('never credits a letter more times than the secret contains it', () => {
   fc.assert(
-    fc.property(word, word, (secret, guess) => {
+    fc.property(smallWord, smallWord, (secret, guess) => {
       const result = matchGuess(secret, guess);
       for (const letter of new Set(guess)) {
         const credited = [...guess].filter((c,i) => c === letter && result[i] !== 'B').length;
@@ -60,6 +62,31 @@ it('never credits a letter more times than the secret contains it', () => {
   );
 })
 
+// Targeted generator: builds a [secret, guess] pair where the guess is the
+// secret rotated, so it always uses exactly the secret's letters.
+const secretAndRearrangement = word.map(secret => [secret, secret.slice(1) + secret[0]] as const);
+
+// Pattern: conditional. If the guess uses exactly the secret's letters, no color is black.
+it('a rearrangement of the secret has no blacks', () => {
+  fc.assert(
+    fc.property(secretAndRearrangement, ([secret, guess]) => {
+      expect(matchGuess(secret, guess)).not.toContain('B');
+    })
+  );
+})
+
+// Shifts every letter forward by k in the alphabet (Z wraps to A).
+const shift = (w: string, k: number) =>
+  [...w].map(c => ALPHABET[(ALPHABET.indexOf(c) + k) % 26]).join('');
+
+// Pattern: metamorphic. Renaming letters the same way in both words does not change the colors.
+it('shifting every letter in both words gives the same colors', () => {
+  fc.assert(
+    fc.property(word, word, fc.integer({ min: 1, max: 25 }), (secret, guess, k) => {
+      expect(matchGuess(shift(secret, k), shift(guess, k))).toEqual(matchGuess(secret, guess));
+    })
+  );
+})
 
 describe('matchGuess', () => {
   it.todo('returns exactly five colors');

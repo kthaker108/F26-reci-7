@@ -10,9 +10,10 @@ import { mergeIntervals, type Interval } from '../src/intervals';
 //   // Pattern: invariant. The output is sorted.
 // (invariant, algebraic, metamorphic, differential, or conditional)
 
-// Valid by construction: pick a start and a non-negative length, so
-// start <= end always holds (the spec's precondition). Two independent
-// integers would give start > end about half the time, which is invalid input.
+// A first attempt at a generator. It has a problem: run the tests and read
+// the counterexample.
+// Fixed: two independent integers often give start > end, which the spec
+// rejects. Picking a start and a non-negative length keeps start <= end.
 const interval: fc.Arbitrary<Interval> = fc.tuple(fc.integer(), fc.nat()).map(([start, len]): Interval => [start, start + len]);
 const intervalList = fc.array(interval);
 
@@ -31,7 +32,14 @@ describe('mergeIntervals', () => {
   // Add your properties here. Aim for at least one of each pattern:
   // invariant, algebraic, metamorphic, differential, conditional.
 
-  //invariant
+  // Small range, so intervals often overlap, touch ([1, 3] and [3, 5]),
+  // or sit one apart ([1, 2] and [3, 4]).
+  const smallInterval: fc.Arbitrary<Interval> = fc
+    .tuple(fc.integer({ min: -10, max: 10 }), fc.nat({ max: 5 }))
+    .map(([start, len]): Interval => [start, start + len]);
+  const smallIntervalList = fc.array(smallInterval);
+
+  // Pattern: invariant. The output is sorted.
   it('the output is sorted', () => {
     fc.assert(
       fc.property(intervalList, xs => {
@@ -42,10 +50,11 @@ describe('mergeIntervals', () => {
       }),
     );
   });
-  //What must always be true of the output's shape?
+
+  // Pattern: invariant. Consecutive output intervals neither overlap nor touch.
   it('the output intervals do not overlap or touch', () => {
     fc.assert(
-      fc.property(intervalList, xs => {
+      fc.property(smallIntervalList, xs => {
         const out = mergeIntervals(xs);
         for (let i = 0; i < out.length - 1; i++) {
           expect(out[i][1]).toBeLessThan(out[i + 1][0]);
@@ -54,62 +63,61 @@ describe('mergeIntervals', () => {
     );
   });
 
-  //algebraic
+  // Pattern: invariant. The input array and its intervals are not modified.
+  it('does not modify the input', () => {
+    fc.assert(
+      fc.property(smallIntervalList, xs => {
+        const before = structuredClone(xs);
+        mergeIntervals(xs);
+        expect(xs).toEqual(before);
+      }),
+    );
+  });
+
+  // Pattern: algebraic. Merging an already-merged list changes nothing.
   it('merging twice is the same as merging once', () => {
     fc.assert(
       fc.property(intervalList, xs => {
         const once = mergeIntervals(xs);
-        const twice = mergeIntervals(once);
-        expect(twice).toEqual(once);
+        expect(mergeIntervals(once)).toEqual(once);
       }),
     );
   });
 
-
-  //metamorphic
-  it('merging the output with itself gives the same output', () => {
+  // Pattern: metamorphic. Reversing the input order does not change the output.
+  it('reversing the input gives the same output', () => {
     fc.assert(
-      fc.property(intervalList, xs => {
-        const out = mergeIntervals(xs);
-        const mergedAgain = mergeIntervals(out);
-        expect(mergedAgain).toEqual(out);
+      fc.property(smallIntervalList, xs => {
+        expect(mergeIntervals([...xs].reverse())).toEqual(mergeIntervals(xs));
       }),
     );
   });
 
-
-  //differential: Can you write a tiny, obviously correct check of "is point p covered?" and compare input with output?
+  // Pattern: differential. Input and output cover the same points, including non-integers.
   it('every point covered by the input is covered by the output', () => {
     fc.assert(
-      fc.property(intervalList, xs => {
+      fc.property(smallIntervalList, xs => {
         const out = mergeIntervals(xs);
-        const pointsToCheck = xs.flatMap(([s, e]) => [s, e]); 
+        // Endpoints plus half-points, to catch gaps like 2 < x < 3.
+        const pointsToCheck = xs.flatMap(([s, e]) => [s, e, s - 0.5, e + 0.5]);
         for (const p of pointsToCheck) {
           const inInput = xs.some(([s, e]) => s <= p && p <= e);
           const inOutput = out.some(([s, e]) => s <= p && p <= e);
-          expect(inInput).toBe(inOutput);
+          expect(inOutput).toBe(inInput);
         }
       }),
     );
   });
 
-  //conditional: If the input intervals already don't overlap or touch, what should the output be? (Generate such inputs directly.)
+  // Pattern: conditional. If the input intervals are already disjoint, the output equals the input.
   it('if the input intervals are disjoint, the output is the same as the input', () => {
-    const disjointIntervals = fc.array(
-      fc.tuple(fc.integer(), fc.nat()).map(([start, len]) => [start, start + len] as Interval),
-      { minLength: 1 }
-    ).filter(intervals => {
-      intervals.sort((a, b) => a[0] - b[0]);
-      for (let i = 0; i < intervals.length - 1; i++) {
-        if (intervals[i][1] >= intervals[i + 1][0]) return false; 
-      }
-      return true;
-    });
+    const disjointIntervals = fc
+      .array(fc.nat({ max: 8 }), { minLength: 1 })
+      .map(lens => lens.map((len, i): Interval => [10 * i, 10 * i + len]));
 
     fc.assert(
       fc.property(disjointIntervals, xs => {
-        const out = mergeIntervals(xs);
-        expect(out).toEqual(xs);
+        expect(mergeIntervals(xs)).toEqual(xs);
       }),
     );
   });

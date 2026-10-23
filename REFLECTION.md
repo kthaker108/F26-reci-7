@@ -12,6 +12,8 @@ Pick a property you wrote that passes on the correct implementation but
 kills few or no mutants. Why is it still a *valid* property? Describe a
 concrete bug (not one of our mutants) that it *would* catch.
 
+
+
 ### 2. A generator problem, not a property problem
 
 Describe a mutant, from either task, that survived or was flaky because of
