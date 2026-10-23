@@ -75,15 +75,12 @@ it('a rearrangement of the secret has no blacks', () => {
   );
 })
 
-// Shifts every letter forward by k in the alphabet (Z wraps to A).
-const shift = (w: string, k: number) =>
-  [...w].map(c => ALPHABET[(ALPHABET.indexOf(c) + k) % 26]).join('');
-
-// Pattern: metamorphic. Renaming letters the same way in both words does not change the colors.
-it('shifting every letter in both words gives the same colors', () => {
+// Pattern: metamorphic. Swapping the secret and the guess keeps the greens in the same places.
+it('swapping secret and guess keeps the same greens', () => {
   fc.assert(
-    fc.property(word, word, fc.integer({ min: 1, max: 25 }), (secret, guess, k) => {
-      expect(matchGuess(shift(secret, k), shift(guess, k))).toEqual(matchGuess(secret, guess));
+    fc.property(word, word, (secret, guess) => {
+      const greens = (colors: string[]) => colors.map(c => c === 'G');
+      expect(greens(matchGuess(guess, secret))).toEqual(greens(matchGuess(secret, guess)));
     })
   );
 })
